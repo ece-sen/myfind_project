@@ -31,13 +31,13 @@ bool compare_filenames(const std::string& file1, const std::string& file2) {
 void find_file(const std::string& searchpath, const std::string& filename) {
     if (recursive) {
         for (const auto& entry : fs::recursive_directory_iterator(searchpath, fs::directory_options::skip_permission_denied)) {
-            if (entry.is_regular_file() && compare_filenames(entry.path().filename().string(), filename)) {
+            if (compare_filenames(entry.path().filename().string(), filename)) {
                 std::cout << getpid() << ": " << filename << ": " << entry.path() << std::endl;
             }
         }
     } else {
         for (const auto& entry : fs::directory_iterator(searchpath, fs::directory_options::skip_permission_denied)) {
-            if (entry.is_regular_file() && compare_filenames(entry.path().filename().string(), filename)) {
+            if (compare_filenames(entry.path().filename().string(), filename)) {
                 std::cout << getpid() << ": " << filename << ": " << entry.path() << std::endl;
             }
         }
@@ -84,6 +84,7 @@ int main(int argc, char* argv[]) {
     }
 
     std::string searchpath = argv[optind++]; // Get the search path
+    /*
     if (searchpath == "~") {
         const char* home = getenv("HOME");
         if (home == nullptr) {
@@ -91,6 +92,7 @@ int main(int argc, char* argv[]) {
         }
         searchpath = home; // If it's "~", replace with actual home directory path
     }
+    */
 
     std::vector<std::string> filenames;
     for (int i = optind; i < argc; ++i) {
