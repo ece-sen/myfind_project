@@ -12,6 +12,13 @@ namespace fs = std::filesystem;
 bool recursive = false;
 bool caseInsensitive = false;
 
+// Helper function to print error
+void print_usage(char *program_name)
+{
+    std::cerr << "Usage: " << program_name << " [-R] [-i] searchpath filename1 [filename2] ...\n";
+    return;
+}
+
 // Helper function to compare filenames with optional case insensitivity
 bool compare_filenames(const std::string& file1, const std::string& file2) {
     if (caseInsensitive) {
@@ -37,17 +44,39 @@ void find_file(const std::string& searchpath, const std::string& filename) {
     }
 }
 
+// Entry Point
 int main(int argc, char* argv[]) {
-    int opt;
-    while ((opt = getopt(argc, argv, "Ri")) != -1) {
-        switch (opt) {
-            case 'R': recursive = true; break;
-            case 'i': caseInsensitive = true; break;
+    int c;
+    char *program_name;
+    unsigned short Counter_Option_i = 0;
+    unsigned short Counter_Option_R = 0;
+
+    program_name = argv[0];
+
+    while ((c = getopt(argc, argv, "Ri")) != -1) 
+    {
+        switch (c) 
+        {
+            case 'R': 
+                Counter_Option_R++;
+                recursive = true; 
+                break;
+            case 'i': 
+                Counter_Option_i++;
+                caseInsensitive = true; 
+                break;
             default:
-                std::cerr << "Usage: " << argv[0] << " [-R] [-i] searchpath filename1 [filename2] ...\n";
+                print_usage(program_name);
                 exit(EXIT_FAILURE);
         }
     }
+    
+    if ((Counter_Option_i > 1) || (Counter_Option_R > 1))
+    {
+        std::cerr << program_name << " error: Options used more than once.\n";
+        exit(EXIT_FAILURE);
+    }
+
 
     if (optind >= argc) {
         std::cerr << "Expected searchpath and filenames\n";
@@ -56,7 +85,7 @@ int main(int argc, char* argv[]) {
 
     std::string searchpath = argv[optind++]; // Get the search path
     if (searchpath == "~") {
-        const char* home = getenv("home");
+        const char* home = getenv("HOME");
         if (home == nullptr) {
             home = getpwuid(getuid())->pw_dir;
         }
@@ -81,4 +110,3 @@ int main(int argc, char* argv[]) {
 
     return 0;
 }
-
