@@ -5,110 +5,117 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <filesystem>
-#include <pwd.h> // for getting user home directory
 
 namespace fs = std::filesystem;
 
-bool recursive = false;
-bool caseInsensitive = false;
+// Global flags for enabling recursive search and case-insensitive matching
+bool recursiveSearchEnabled = false;
+bool caseInsensetiveSearch = false;
 
-// Helper function to print error
-void print_usage(char *program_name)
-{
-    std::cerr << "Usage: " << program_name << " [-R] [-i] searchpath filename1 [filename2] ...\n";
-    return;
+// Function to display program usage instructions
+void printUsage(const char* programName) {
+    std::cerr << "Usage: " << programName << " [-R] [-i] searchpath filename1 [filename2] ...\n"
+              << "Options:\n"
+              << "  -R  Search directories recursively\n"
+              << "  -i  Perform case-insensitive filename matching\n";
 }
 
-// Helper function to compare filenames with optional case insensitivity
-bool compare_filenames(const std::string& file1, const std::string& file2) {
-    if (caseInsensitive) {
+// Helper function to compare filenames, with optional case-insensitive matching
+bool isMatchingFilename(const std::string& file1, const std::string& file2) {
+    if (caseInsensetiveSearch) {
         return strcasecmp(file1.c_str(), file2.c_str()) == 0;
     }
     return file1 == file2;
 }
 
-// Helper function to perform search
-void find_file(const std::string& searchpath, const std::string& filename) {
-    if (recursive) {
-        for (const auto& entry : fs::recursive_directory_iterator(searchpath, fs::directory_options::skip_permission_denied)) {
-            if (compare_filenames(entry.path().filename().string(), filename)) {
-                std::cout << getpid() << ": " << filename << ": " << entry.path() << std::endl;
+// Function to search for a file in the specified directory
+void searchForFile(const std::string& directory, const std::string& filename) {
+    bool found = false; // To track if the file is found
+
+    try {
+        if (recursiveSearchEnabled) {
+            // Perform recursive search
+            for (const auto& entry : fs::recursive_directory_iterator(directory, fs::directory_options::skip_permission_denied)) {
+                if (isMatchingFilename(entry.path().filename().string(), filename)) {
+                    std::cout << getpid() << ": " << filename << ": " << fs::absolute(entry.path()) << "\n";
+                    found = true;
+                }
+            }
+        } else {
+            // Perform non-recursive search
+            for (const auto& entry : fs::directory_iterator(directory, fs::directory_options::skip_permission_denied)) {
+                if (isMatchingFilename(entry.path().filename().string(), filename)) {
+                    std::cout << getpid() << ": " << filename << ": " << fs::absolute(entry.path()) << "\n";
+                    found = true;
+                }
             }
         }
-    } else {
-        for (const auto& entry : fs::directory_iterator(searchpath, fs::directory_options::skip_permission_denied)) {
-            if (compare_filenames(entry.path().filename().string(), filename)) {
-                std::cout << getpid() << ": " << filename << ": " << entry.path() << std::endl;
-            }
+
+        if (!found) {
+            // Inform the user if the file was not found
+            std::cout << getpid() << ": " << filename << ": Not found in " << fs::absolute(directory) << "\n";
         }
+    } catch (const std::exception& e) {
+        std::cerr << "Error accessing " << directory << ": " << e.what() << "\n";
     }
 }
 
-// Entry Point
 int main(int argc, char* argv[]) {
-    int c;
-    char *program_name;
-    unsigned short Counter_Option_i = 0;
-    unsigned short Counter_Option_R = 0;
+    int opt;
+    bool optionError = false;
 
-    program_name = argv[0];
-
-    while ((c = getopt(argc, argv, "Ri")) != -1) 
-    {
-        switch (c) 
-        {
-            case 'R': 
-                Counter_Option_R++;
-                recursive = true; 
+    // Parse command-line options
+    while ((opt = getopt(argc, argv, "Ri")) != EOF) {
+        switch (opt) {
+            case 'R':
+                recursiveSearchEnabled = true;
                 break;
-            case 'i': 
-                Counter_Option_i++;
-                caseInsensitive = true; 
+            case 'i':
+                caseInsensetiveSearch = true;
                 break;
             default:
-                print_usage(program_name);
-                exit(EXIT_FAILURE);
+                optionError = true;
+                break;
         }
+    }
+
+    // Ensure that -R and -i are not combined as a single option like -Ri
+    if (optind > 1 && argv[optind - 1][0] == '-' && strlen(argv[optind - 1]) > 2) {
+        std::cerr << "Error: Options -R and -i must be specified separately.\n";
+        return EXIT_FAILURE;
     }
     
-    if ((Counter_Option_i > 1) || (Counter_Option_R > 1))
-    {
-        std::cerr << program_name << " error: Options used more than once.\n";
-        exit(EXIT_FAILURE);
+    // Validate arguments and options
+    if (optionError || optind >= argc) {
+        printUsage(argv[0]);
+        return EXIT_FAILURE;
     }
 
+    std::string searchPath = argv[optind++];
+    std::vector<std::string> filenames(argv + optind, argv + argc);
 
-    if (optind >= argc) {
-        std::cerr << "Expected searchpath and filenames\n";
-        exit(EXIT_FAILURE);
+    // Check if the search path exists and is a directory
+    if (!fs::exists(searchPath) || !fs::is_directory(searchPath)) {
+        std::cerr << "Error: Invalid or non-existent directory: " << searchPath << "\n";
+        return EXIT_FAILURE;
     }
 
-    std::string searchpath = argv[optind++]; // Get the search path
-    /*
-    if (searchpath == "~") {
-        const char* home = getenv("HOME");
-        if (home == nullptr) {
-            home = getpwuid(getuid())->pw_dir;
-        }
-        searchpath = home; // If it's "~", replace with actual home directory path
-    }
-    */
-
-    std::vector<std::string> filenames;
-    for (int i = optind; i < argc; ++i) {
-        filenames.push_back(argv[i]);
-    }
-
+    // Spawn a child process for each filename to search
     for (const auto& filename : filenames) {
         pid_t pid = fork();
-        if (pid == 0) { // Child process
-            find_file(searchpath, filename);
-            exit(0); // Terminate child process
+
+        if (pid == 0) {
+            // Child process handles the search for the current file
+            searchForFile(searchPath, filename);
+            return 0; // Exit child process
+        } else if (pid < 0) {
+            // Handle fork error
+            std::cerr << "Error: Failed to create process for " << filename << "\n";
         }
     }
 
-    // Wait for all children to complete
-    while (wait(NULL) > 0); // Wait for all children to prevent zombies
+    // Parent process waits for all child processes to finish
+    while (wait(NULL) > 0);
 
     return 0;
 }
