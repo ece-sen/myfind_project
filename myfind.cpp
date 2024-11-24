@@ -5,12 +5,13 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <filesystem>
+#include <fstream>
 
 namespace fs = std::filesystem;
 
 // Global flags for enabling recursive search and case-insensitive matching
 bool recursiveSearchEnabled = false;
-bool caseInsensetiveSearch = false;
+bool caseInsensitiveSearch = false;
 
 // Function to display program usage instructions
 void printUsage(const char* programName) {
@@ -22,22 +23,28 @@ void printUsage(const char* programName) {
 
 // Helper function to compare filenames, with optional case-insensitive matching
 bool isMatchingFilename(const std::string& file1, const std::string& file2) {
-    if (caseInsensetiveSearch) {
-        return strcasecmp(file1.c_str(), file2.c_str()) == 0;
+    if (caseInsensitiveSearch) {
+        return strcasecmp(file1.c_str(), file2.c_str()) == 0; // Case-insensitive comparison
     }
-    return file1 == file2;
+    return file1 == file2; // Exact match
 }
 
 // Function to search for a file in the specified directory
-void searchForFile(const std::string& directory, const std::string& filename) {
+void searchForFile(const std::string& directory, const std::string& filename, const std::string& outputFile) {
     bool found = false; // To track if the file is found
+    std::ofstream outFile(outputFile);
+
+    if (!outFile) {
+        std::cerr << "Error: Unable to create or open output file: " << outputFile << "\n";
+        return;
+    }
 
     try {
         if (recursiveSearchEnabled) {
             // Perform recursive search
             for (const auto& entry : fs::recursive_directory_iterator(directory, fs::directory_options::skip_permission_denied)) {
                 if (isMatchingFilename(entry.path().filename().string(), filename)) {
-                    std::cout << getpid() << ": " << filename << ": " << fs::absolute(entry.path()) << "\n";
+                    outFile << getpid() << ": " << filename << ": " << fs::absolute(entry.path()) << "\n";
                     found = true;
                 }
             }
@@ -45,19 +52,20 @@ void searchForFile(const std::string& directory, const std::string& filename) {
             // Perform non-recursive search
             for (const auto& entry : fs::directory_iterator(directory, fs::directory_options::skip_permission_denied)) {
                 if (isMatchingFilename(entry.path().filename().string(), filename)) {
-                    std::cout << getpid() << ": " << filename << ": " << fs::absolute(entry.path()) << "\n";
+                    outFile << getpid() << ": " << filename << ": " << fs::absolute(entry.path()) << "\n";
                     found = true;
                 }
             }
         }
 
         if (!found) {
-            // Inform the user if the file was not found
-            std::cout << getpid() << ": " << filename << ": Not found in " << fs::absolute(directory) << "\n";
+            outFile << getpid() << ": " << filename << ": Not found in " << fs::absolute(directory) << "\n";
         }
     } catch (const std::exception& e) {
-        std::cerr << "Error accessing " << directory << ": " << e.what() << "\n";
+        outFile << "Error accessing " << directory << ": " << e.what() << "\n";
     }
+
+    outFile.close(); // Close the output file when done
 }
 
 int main(int argc, char* argv[]) {
@@ -71,7 +79,7 @@ int main(int argc, char* argv[]) {
                 recursiveSearchEnabled = true;
                 break;
             case 'i':
-                caseInsensetiveSearch = true;
+                caseInsensitiveSearch = true;
                 break;
             default:
                 optionError = true;
@@ -100,22 +108,41 @@ int main(int argc, char* argv[]) {
         return EXIT_FAILURE;
     }
 
+    // Temporary files for storing output from child processes
+    std::vector<std::string> tempFiles;
+
     // Spawn a child process for each filename to search
     for (const auto& filename : filenames) {
         pid_t pid = fork();
 
         if (pid == 0) {
-            // Child process handles the search for the current file
-            searchForFile(searchPath, filename);
+            // Child process: create a temporary file for output
+            std::string tempFile = "/tmp/myfind_" + std::to_string(getpid()) + ".log";
+            searchForFile(searchPath, filename, tempFile);
             return 0; // Exit child process
         } else if (pid < 0) {
             // Handle fork error
             std::cerr << "Error: Failed to create process for " << filename << "\n";
+        } else {
+            // Parent process: store the temporary file name
+            tempFiles.push_back("/tmp/myfind_" + std::to_string(pid) + ".log");
         }
     }
 
     // Parent process waits for all child processes to finish
     while (wait(NULL) > 0);
+
+    // Parent process reads and outputs the results from temporary files
+    for (const auto& tempFile : tempFiles) {
+        std::ifstream inFile(tempFile);
+        if (inFile) {
+            std::cout << inFile.rdbuf(); // Output the contents of the temporary file
+        } else {
+            std::cerr << "Error: Unable to read temporary file: " << tempFile << "\n";
+        }
+        inFile.close();
+        fs::remove(tempFile); // Clean up temporary file
+    }
 
     return 0;
 }
