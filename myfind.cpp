@@ -79,9 +79,7 @@ void searchForFile(const std::string& directory, const std::string& filename) {
 int main(int argc, char* argv[]) {
     int opt;
     bool optionError = false;
-    // to observe if -R or -i are already used
-    bool recursiveOptionUsed = false;
-    bool caseInsensitiveOptionUsed = false;
+
     // ensure correct synchronization between parent and child processes
     sem_init(&semaphore, 0, 0);
 
@@ -89,36 +87,26 @@ int main(int argc, char* argv[]) {
     while ((opt = getopt(argc, argv, "Ri")) != EOF) {
         switch (opt) {
             case 'R':
-                if (recursiveOptionUsed) { // Check if -R was already used
-                    std::cerr << "Error: Option -R can only be specified once.\n";
-                    optionError = true;
-                }
-                recursiveOptionUsed = true;
                 recursiveSearchEnabled = true; 
                 break;
             case 'i':
-                if (caseInsensitiveOptionUsed) { // Check if -i was already used
-                    std::cerr << "Error: Option -i can only be specified once.\n";
-                    optionError = true;
-                }
-                caseInsensitiveOptionUsed = true;
                 caseInsensetiveSearch = true; 
                 break;
             default:
-                optionError = true; 
+                optionError = true; // flag an error for invalid options
                 break;
         }
-    }
-
-    // validate arguments and options
-    if (optionError || optind >= argc) {
-        printUsage(argv[0]);
-        return EXIT_FAILURE;
     }
 
     // combined options like -Ri are not allowed (must be separate)
     if (optind > 1 && argv[optind - 1][0] == '-' && strlen(argv[optind - 1]) > 2) {
         std::cerr << "Error: Options -R and -i must be specified separately.\n";
+        return EXIT_FAILURE;
+    }
+
+    // validate arguments and options
+    if (optionError || optind >= argc) {
+        printUsage(argv[0]);
         return EXIT_FAILURE;
     }
 
@@ -138,15 +126,16 @@ int main(int argc, char* argv[]) {
 
         if (pid == 0) {
             searchForFile(searchPath, filename);
-            _exit(0); // proper termination of the child process
+            return 0;
         } else if (pid < 0) {
             std::cerr << "Error: Failed to create process for " << filename << "\n";
         }
     }
 
-    // parent process waits for all child processes to complete
+// Parent process waits for all child processes to complete using semaphores
     for (size_t i = 0; i < filenames.size(); ++i) {
-        sem_wait(&semaphore); // wait for a signal from a child process
+        int status;
+        waitpid(-1, &status, 0); // Wait for any child process
     }
 
     // clean up after all processes have finished
