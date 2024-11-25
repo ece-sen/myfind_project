@@ -72,7 +72,14 @@ void searchForFile(const std::string& directory, const std::string& filename) {
         sem_post(&semaphore);
     }
 }
-
+/*
+ how requirement was achieved:
+ - Creates a child process with 'fork()' for each filename.
+ - Child process searches the directory (recursively if '-R' is enabled, case insensetive if '-i' is enabled).
+ - Results printed to 'stdout': process ID, filename, file path, or "Not found".
+ - Parent process waits for all children to finish using 'waitpid'.
+ - Output is unsorted but readable, as each child prints results immediately.
+ */
 int main(int argc, char* argv[]) {
     int opt;
     bool optionError = false;
