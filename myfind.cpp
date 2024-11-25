@@ -138,7 +138,7 @@ int main(int argc, char* argv[]) {
 
         if (pid == 0) {
             searchForFile(searchPath, filename);
-            _exit(0); // Use _exit to ensure proper termination of the child process
+            _exit(0); // proper termination of the child process
         } else if (pid < 0) {
             std::cerr << "Error: Failed to create process for " << filename << "\n";
         }
