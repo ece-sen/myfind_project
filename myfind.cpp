@@ -79,9 +79,9 @@ void searchForFile(const std::string& directory, const std::string& filename) {
 int main(int argc, char* argv[]) {
     int opt;
     bool optionError = false;
-    bool recursiveOptionUsed = false; // Track if -R is already used
-    bool caseInsensitiveOptionUsed = false; // Track if -i is already used
-
+    // to observe if -R or -i are already used
+    bool recursiveOptionUsed = false;
+    bool caseInsensitiveOptionUsed = false;
     // ensure correct synchronization between parent and child processes
     sem_init(&semaphore, 0, 0);
 
@@ -105,7 +105,7 @@ int main(int argc, char* argv[]) {
                 caseInsensetiveSearch = true; 
                 break;
             default:
-                optionError = true; // flag an error for invalid options
+                optionError = true; 
                 break;
         }
     }
