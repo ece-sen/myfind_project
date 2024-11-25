@@ -5,16 +5,12 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <filesystem>
-#include <semaphore.h>
 
 namespace fs = std::filesystem;
 
 // global variables
 bool recursiveSearchEnabled = false; 
 bool caseInsensetiveSearch = false;  
-
-// track number of active child processes
-sem_t semaphore;
 
 // display how to properly search
 void printUsage(const char* programName) {
@@ -63,9 +59,6 @@ void searchForFile(const std::string& directory, const std::string& filename) {
     } catch (const std::exception& e) {
         std::cerr << "Error accessing " << directory << ": " << e.what() << "\n";
     }
-
-    // signal semaphore this child process has finished
-    sem_post(&semaphore);
 }
 
 /*
@@ -73,15 +66,12 @@ void searchForFile(const std::string& directory, const std::string& filename) {
  - Creates a child process with 'fork()' for each filename.
  - Child process searches the directory (recursively if '-R' is enabled, case insensetive if '-i' is enabled).
  - Results printed to 'stdout': process ID, filename, file path, or "Not found".
- - Parent process waits for all children to finish using a semaphore.
+ - Parent process waits for all children to finish using 'waitpid'.
  - Output is unsorted but readable, as each child prints results immediately.
  */
 int main(int argc, char* argv[]) {
     int opt;
     bool optionError = false;
-
-    // ensure correct synchronization between parent and child processes
-    sem_init(&semaphore, 0, 0);
 
     // parse command-line options
     while ((opt = getopt(argc, argv, "Ri")) != EOF) {
@@ -132,14 +122,11 @@ int main(int argc, char* argv[]) {
         }
     }
 
-// Parent process waits for all child processes to complete using semaphores
+    // Parent process waits for all child processes to complete
     for (size_t i = 0; i < filenames.size(); ++i) {
         int status;
         waitpid(-1, &status, 0); // Wait for any child process
     }
-
-    // clean up after all processes have finished
-    sem_destroy(&semaphore);
 
     return 0;
 }
